@@ -24,6 +24,7 @@ import com.spineband.app.viewmodel.AuthViewModel
 @Composable
 fun ProfileScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToEdit: () -> Unit,  // NUEVO PARÁMETRO
     onLogout: () -> Unit,
     viewModel: AuthViewModel = viewModel()
 ) {
@@ -65,6 +66,16 @@ fun ProfileScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                    }
+                },
+                actions = {
+                    // NUEVO: Botón de editar en el TopBar
+                    IconButton(onClick = onNavigateToEdit) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "Editar Perfil",
+                            tint = SpineBandWhite
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -126,7 +137,23 @@ fun ProfileScreen(
                     color = SpineBandDarkGray
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // NUEVO: Botón de Editar Perfil prominente
+                OutlinedButton(
+                    onClick = onNavigateToEdit,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = SpineBandCyan
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(2.dp, SpineBandCyan)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Editar Perfil", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // Información personal
                 Card(
