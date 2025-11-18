@@ -14,9 +14,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.spineband.app.data.AppSettings
+import com.spineband.app.data.database.AppDatabase
 import com.spineband.app.ui.*
 import com.spineband.app.ui.theme.SpineBandTheme
 import com.spineband.app.viewmodel.AuthViewModel
+import com.spineband.app.viewmodel.EditProfileViewModel
+import com.spineband.app.viewmodel.EditProfileViewModelFactory
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,7 +55,7 @@ fun SpineBandApp() {
             navController = navController,
             startDestination = startDestination
         ) {
-            composable("splash") {
+               composable("splash") {
                 SplashScreen(
                     onNavigateToNext = {
                         navController.navigate("login") {
@@ -152,12 +155,35 @@ fun SpineBandApp() {
                     onNavigateBack = {
                         navController.popBackStack()
                     },
+                    onNavigateToEdit = {
+                        navController.navigate("edit_profile")
+                    },
                     onLogout = {
                         navController.navigate("login") {
                             popUpTo(0) { inclusive = true }
                         }
                     },
                     viewModel = authViewModel
+                )
+            }
+
+            // EditProfileScreen
+            composable("edit_profile") {
+                val database = remember { AppDatabase.getDatabase(context) }
+                val currentUserId = currentUser?.id ?: return@composable
+
+                val editViewModel: EditProfileViewModel = viewModel(
+                    factory = EditProfileViewModelFactory(
+                        userDao = database.userDao(),
+                        userId = currentUserId
+                    )
+                )
+
+                EditProfileScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    viewModel = editViewModel
                 )
             }
         }
