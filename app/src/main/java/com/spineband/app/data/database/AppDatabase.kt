@@ -12,9 +12,10 @@ import com.spineband.app.data.database.entities.*
         User::class,
         Survey::class,
         PostureData::class,
-        DailySummary::class
+        DailySummary::class,
+        PostureRecord::class  // NUEVA ENTIDAD
     ],
-    version = 1,
+    version = 2,  // INCREMENTADA DE 1 A 2
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,6 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun surveyDao(): SurveyDao
     abstract fun postureDao(): PostureDao
     abstract fun summaryDao(): SummaryDao
+    abstract fun postureRecordDao(): PostureRecordDao  // NUEVO DAO
 
     companion object {
         @Volatile
