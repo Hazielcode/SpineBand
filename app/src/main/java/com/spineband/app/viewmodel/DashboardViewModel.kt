@@ -3,12 +3,12 @@ package com.spineband.app.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.spineband.app.data.SpineBandApi
 import com.spineband.app.data.database.dao.PostureRecordDao
 import com.spineband.app.data.database.entities.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.util.*
 
 class DashboardViewModel(
@@ -16,6 +16,9 @@ class DashboardViewModel(
     private val userId: Int,
     private val esp32IP: String
 ) : ViewModel() {
+
+    // Instancia del API
+    private val api = SpineBandApi("http://$esp32IP")
 
     // Estado de conexión
     private val _isConnected = MutableStateFlow(false)
@@ -59,49 +62,54 @@ class DashboardViewModel(
         startSessionTimer()
     }
 
-    // Iniciar recolección de datos del ESP32
+    // ========== CONEXIÓN REAL CON ESP32 ==========
+
     private fun startDataCollection() {
         viewModelScope.launch {
             while (true) {
                 try {
-                    // Simular lectura del ESP32 (reemplazar con llamada HTTP real)
-                    val angle = fetchAngleFromESP32()
+                    // Obtener datos del ESP32
+                    val data = api.getPostureData()
 
-                    _currentAngle.value = angle
-                    val status = determinePostureStatus(angle)
-                    _currentStatus.value = status
-                    val isGood = isGoodPosture(angle)
+                    if (data != null) {
+                        _currentAngle.value = data.angle
+                        _currentStatus.value = data.postureStatus
+                        val isGood = data.isGoodPosture
 
-                    // Guardar en base de datos
-                    val record = PostureRecord(
-                        userId = userId,
-                        angle = angle,
-                        status = status,
-                        isGoodPosture = isGood,
-                        sessionId = sessionId,
-                        timestamp = System.currentTimeMillis()
-                    )
-                    postureRecordDao.insert(record)
+                        // Guardar en base de datos
+                        val record = PostureRecord(
+                            userId = userId,
+                            angle = data.angle,
+                            status = data.postureStatus,
+                            isGoodPosture = isGood,
+                            sessionId = sessionId,
+                            timestamp = System.currentTimeMillis()
+                        )
+                        postureRecordDao.insert(record)
 
-                    // Actualizar contador de mala postura
-                    if (!isGood) {
-                        consecutiveBadPostureCount++
-                        if (consecutiveBadPostureCount >= 5) { // 5 lecturas malas = ~10 segundos
-                            _badPostureAlert.value = true
+                        // Actualizar contador de mala postura
+                        if (!isGood) {
+                            consecutiveBadPostureCount++
+                            if (consecutiveBadPostureCount >= 5) {
+                                _badPostureAlert.value = true
+                            }
+                        } else {
+                            consecutiveBadPostureCount = 0
+                            _badPostureAlert.value = false
                         }
-                    } else {
-                        consecutiveBadPostureCount = 0
-                        _badPostureAlert.value = false
-                    }
 
-                    _isConnected.value = true
+                        _isConnected.value = true
+                    } else {
+                        _isConnected.value = false
+                        _currentStatus.value = "Error de conexión"
+                    }
 
                 } catch (e: Exception) {
                     _isConnected.value = false
                     _currentStatus.value = "Error de conexión"
                 }
 
-                delay(2000) // Actualizar cada 2 segundos
+                delay(1000) // Actualizar cada 1 segundo (más rápido que antes)
             }
         }
     }
@@ -110,7 +118,7 @@ class DashboardViewModel(
     private fun loadChartData() {
         viewModelScope.launch {
             postureRecordDao.getRecentRecords(userId, 30).collect { records ->
-                _chartData.value = records.reversed() // Más antiguo primero para el gráfico
+                _chartData.value = records.reversed()
             }
         }
     }
@@ -139,7 +147,7 @@ class DashboardViewModel(
                         worstAngle = it.maxAngle,
                         goodPosturePercentage = if (it.total > 0)
                             (it.goodCount.toFloat() / it.total * 100) else 0f,
-                        totalTimeMinutes = it.total * 2 / 60 // Cada lectura = 2 segundos
+                        totalTimeMinutes = it.total * 2 / 60
                     )
                 }
             }
@@ -161,13 +169,14 @@ class DashboardViewModel(
     fun calibrate() {
         viewModelScope.launch {
             try {
-                // Llamada HTTP al ESP32 para calibrar
-                val response = calibrateESP32()
-                if (response) {
-                    _currentStatus.value = "Calibración exitosa"
+                val success = api.calibrate()
+                _currentStatus.value = if (success) {
+                    "✅ Calibración exitosa"
+                } else {
+                    "❌ Error en calibración"
                 }
             } catch (e: Exception) {
-                _currentStatus.value = "Error en calibración"
+                _currentStatus.value = "❌ Error en calibración"
             }
         }
     }
@@ -187,20 +196,11 @@ class DashboardViewModel(
         consecutiveBadPostureCount = 0
     }
 
-    // === FUNCIONES HTTP (reemplazar con tu implementación real) ===
-
-    private suspend fun fetchAngleFromESP32(): Float {
-        // TODO: Implementar llamada HTTP real al ESP32
-        // Por ahora simulamos datos
-        return (10..40).random().toFloat()
-    }
-
-    private suspend fun calibrateESP32(): Boolean {
-        // TODO: Implementar llamada HTTP POST al ESP32 /api/calibrate
-        return true
-    }
-
     // === HELPERS ===
+
+    private fun generateSessionId(): String {
+        return "SESSION_${System.currentTimeMillis()}"
+    }
 
     private fun getStartOfDayTimestamp(): Long {
         val calendar = Calendar.getInstance()
