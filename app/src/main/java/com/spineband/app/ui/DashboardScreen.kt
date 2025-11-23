@@ -290,3 +290,4 @@ private fun formatSessionDuration(seconds: Long): String {
         "%02d:%02d".format(minutes, secs)
     }
 }
+
