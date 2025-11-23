@@ -26,6 +26,7 @@ import com.spineband.app.viewmodel.DashboardViewModelFactory
 @Composable
 fun DashboardScreen(
     esp32IP: String,
+    userId: Int,
     onNavigateToHistory: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToProfile: () -> Unit
