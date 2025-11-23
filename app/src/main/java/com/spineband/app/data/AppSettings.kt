@@ -9,7 +9,7 @@ class AppSettings(context: Context) {
         context.getSharedPreferences("spineband_settings", Context.MODE_PRIVATE)
 
     var esp32IP: String
-        get() = prefs.getString("esp32_ip", "10.178.71.26") ?: "10.178.71.26"
+        get() = prefs.getString("esp32_ip", "10.14.156.26") ?: "10.14.156.26"  // ⬅️ CAMBIO AQUÍ
         set(value) = prefs.edit().putString("esp32_ip", value).apply()
 
     var sensitivityLevel: Float
