@@ -88,18 +88,15 @@ private fun HistoryItem(record: PostureRecord) {
     val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     val time = timeFormat.format(Date(record.timestamp))
 
-    val statusColor = when (record.status) {
-        "Excelente" -> SpineBandGreen
-        "Buena" -> SpineBandCyan
-        "Regular" -> SpineBandOrange
-        else -> SpineBandRed
-    }
+    // ⬇️ LÓGICA CORREGIDA: Usar isGoodPosture en vez de status
+    val isGood = record.isGoodPosture
 
-    val statusIcon = when (record.status) {
-        "Excelente" -> Icons.Default.SentimentVerySatisfied
-        "Buena" -> Icons.Default.SentimentSatisfied
-        "Regular" -> Icons.Default.SentimentNeutral
-        else -> Icons.Default.SentimentDissatisfied
+    val statusColor = if (isGood) SpineBandGreen else SpineBandRed
+
+    val statusIcon = if (isGood) {
+        Icons.Default.SentimentVerySatisfied // 😊 Carita feliz
+    } else {
+        Icons.Default.SentimentDissatisfied  // 😟 Carita triste
     }
 
     Surface(
@@ -134,7 +131,7 @@ private fun HistoryItem(record: PostureRecord) {
             // Información
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = record.status,
+                    text = record.status, // "Buena Postura" o "Mala Postura"
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = statusColor
