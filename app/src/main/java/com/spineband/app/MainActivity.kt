@@ -55,7 +55,7 @@ fun SpineBandApp() {
             navController = navController,
             startDestination = startDestination
         ) {
-               composable("splash") {
+            composable("splash") {
                 SplashScreen(
                     onNavigateToNext = {
                         navController.navigate("login") {
@@ -118,8 +118,12 @@ fun SpineBandApp() {
             }
 
             composable("dashboard") {
+                // Obtener userId del usuario actual
+                val userId = currentUser?.id ?: 1 // Default a 1 si no hay usuario
+
                 DashboardScreen(
                     esp32IP = currentIP,
+                    userId = userId, // AÑADIR userId aquí
                     onNavigateToHistory = {
                         navController.navigate("history")
                     },
@@ -143,7 +147,11 @@ fun SpineBandApp() {
             }
 
             composable("history") {
+                // Pasar userId a HistoryScreen
+                val userId = currentUser?.id ?: 1
+
                 HistoryScreen(
+                    userId = userId,  // AÑADIR userId aquí
                     onNavigateBack = {
                         navController.popBackStack()
                     }
@@ -159,6 +167,8 @@ fun SpineBandApp() {
                         navController.navigate("edit_profile")
                     },
                     onLogout = {
+                        // Limpiar usuario actual y navegar a login
+                        authViewModel.logout()
                         navController.navigate("login") {
                             popUpTo(0) { inclusive = true }
                         }
@@ -167,7 +177,6 @@ fun SpineBandApp() {
                 )
             }
 
-            // EditProfileScreen
             composable("edit_profile") {
                 val database = remember { AppDatabase.getDatabase(context) }
                 val currentUserId = currentUser?.id ?: return@composable
