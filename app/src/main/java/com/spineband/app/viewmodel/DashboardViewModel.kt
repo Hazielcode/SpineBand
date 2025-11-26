@@ -1,11 +1,13 @@
 package com.spineband.app.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.spineband.app.data.SpineBandApi
 import com.spineband.app.data.database.dao.PostureRecordDao
 import com.spineband.app.data.database.entities.*
+import com.spineband.app.utils.NotificationHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -14,11 +16,15 @@ import java.util.*
 class DashboardViewModel(
     private val postureRecordDao: PostureRecordDao,
     private val userId: Int,
-    private val esp32IP: String
+    private val esp32IP: String,
+    private val context: Context  // NUEVO: Añadir Context para notificaciones
 ) : ViewModel() {
 
     // Instancia del API
     private val api = SpineBandApi("http://$esp32IP")
+
+    // NUEVO: Helper para notificaciones y vibración
+    private val notificationHelper = NotificationHelper(context)
 
     // Estado de conexión
     private val _isConnected = MutableStateFlow(false)
@@ -51,9 +57,27 @@ class DashboardViewModel(
     private val _badPostureAlert = MutableStateFlow(false)
     val badPostureAlert: StateFlow<Boolean> = _badPostureAlert.asStateFlow()
 
+    // NUEVO: Control de alertas
+    private val _alertsEnabled = MutableStateFlow(true)
+    val alertsEnabled: StateFlow<Boolean> = _alertsEnabled.asStateFlow()
+
+    private val _vibrationEnabled = MutableStateFlow(true)
+    val vibrationEnabled: StateFlow<Boolean> = _vibrationEnabled.asStateFlow()
+
+    private val _soundEnabled = MutableStateFlow(true)
+    val soundEnabled: StateFlow<Boolean> = _soundEnabled.asStateFlow()
+
     private var sessionId: String = generateSessionId()
     private var sessionStartTime: Long = System.currentTimeMillis()
     private var consecutiveBadPostureCount = 0
+
+    // NUEVO: Variables para control de tiempo de mala postura
+    private var badPostureStartTime: Long = 0
+    private var lastAlertTime: Long = 0
+
+    // NUEVO: Configuraciones de alerta
+    private val ALERT_THRESHOLD_SECONDS = 10  // Alertar después de 10 segundos de mala postura
+    private val ALERT_COOLDOWN_MS = 30000     // No alertar más de una vez cada 30 segundos
 
     init {
         startDataCollection()
@@ -62,7 +86,7 @@ class DashboardViewModel(
         startSessionTimer()
     }
 
-    // ========== CONEXIÓN REAL CON ESP32 ==========
+    // ========== CONEXIÓN REAL CON ESP32 CON ALERTAS MEJORADAS ==========
 
     private fun startDataCollection() {
         viewModelScope.launch {
@@ -87,15 +111,44 @@ class DashboardViewModel(
                         )
                         postureRecordDao.insert(record)
 
-                        // Actualizar contador de mala postura
+                        // LÓGICA DE ALERTAS MEJORADA CON TIEMPO
                         if (!isGood) {
+                            // Mala postura detectada
+                            if (consecutiveBadPostureCount == 0) {
+                                // Primera vez que se detecta mala postura
+                                badPostureStartTime = System.currentTimeMillis()
+                            }
                             consecutiveBadPostureCount++
-                            if (consecutiveBadPostureCount >= 5) {
-                                _badPostureAlert.value = true
+
+                            // Calcular cuánto tiempo lleva en mala postura
+                            val badPostureDuration = (System.currentTimeMillis() - badPostureStartTime) / 1000
+
+                            // Verificar si han pasado 10 segundos de mala postura continua
+                            if (badPostureDuration >= ALERT_THRESHOLD_SECONDS) {
+                                val currentTime = System.currentTimeMillis()
+
+                                // Verificar cooldown para no molestar demasiado
+                                if (currentTime - lastAlertTime > ALERT_COOLDOWN_MS) {
+                                    _badPostureAlert.value = true
+
+                                    // ACTIVAR ALERTA CON VIBRACIÓN Y SONIDO
+                                    if (_alertsEnabled.value) {
+                                        triggerPostureAlert(data.angle, badPostureDuration.toInt())
+                                    }
+
+                                    lastAlertTime = currentTime
+                                }
                             }
                         } else {
-                            consecutiveBadPostureCount = 0
-                            _badPostureAlert.value = false
+                            // Buena postura - resetear contadores
+                            if (consecutiveBadPostureCount > 0) {
+                                consecutiveBadPostureCount = 0
+                                _badPostureAlert.value = false
+                                badPostureStartTime = 0
+
+                                // Cancelar notificación si existe
+                                notificationHelper.cancelNotification()
+                            }
                         }
 
                         _isConnected.value = true
@@ -109,7 +162,24 @@ class DashboardViewModel(
                     _currentStatus.value = "Error de conexión"
                 }
 
-                delay(1000) // Actualizar cada 1 segundo (más rápido que antes)
+                delay(1000) // Actualizar cada 1 segundo
+            }
+        }
+    }
+
+    // NUEVA FUNCIÓN: Disparar alerta con vibración y sonido
+    private fun triggerPostureAlert(angle: Float, duration: Int) {
+        viewModelScope.launch {
+            // Mostrar notificación con vibración y sonido
+            notificationHelper.showPostureAlert(angle, duration)
+
+            // Vibración adicional si está habilitada
+            if (_vibrationEnabled.value) {
+                // Patrón de vibración de advertencia (3 vibraciones cortas)
+                repeat(3) {
+                    notificationHelper.vibrateQuick()
+                    delay(300)
+                }
             }
         }
     }
@@ -147,7 +217,7 @@ class DashboardViewModel(
                         worstAngle = it.maxAngle,
                         goodPosturePercentage = if (it.total > 0)
                             (it.goodCount.toFloat() / it.total * 100) else 0f,
-                        totalTimeMinutes = it.total * 2 / 60
+                        totalTimeMinutes = it.total / 60  // Cada registro es 1 segundo
                     )
                 }
             }
@@ -165,12 +235,14 @@ class DashboardViewModel(
         }
     }
 
-    // Calibrar sensor
+    // Calibrar sensor - MEJORADO CON VIBRACIÓN
     fun calibrate() {
         viewModelScope.launch {
             try {
                 val success = api.calibrate()
                 _currentStatus.value = if (success) {
+                    // Vibración corta de confirmación
+                    notificationHelper.vibrateQuick()
                     "✅ Calibración exitosa"
                 } else {
                     "❌ Error en calibración"
@@ -181,19 +253,49 @@ class DashboardViewModel(
         }
     }
 
-    // Reiniciar sesión
+    // Reiniciar sesión - MEJORADO
     fun resetSession() {
         sessionId = generateSessionId()
         sessionStartTime = System.currentTimeMillis()
         _sessionDuration.value = 0
         consecutiveBadPostureCount = 0
         _badPostureAlert.value = false
+        badPostureStartTime = 0
+        lastAlertTime = 0
+        // Cancelar cualquier notificación activa
+        notificationHelper.cancelNotification()
     }
 
-    // Descartar alerta de mala postura
+    // Descartar alerta de mala postura - MEJORADO
     fun dismissAlert() {
         _badPostureAlert.value = false
-        consecutiveBadPostureCount = 0
+        // No reseteamos el contador aquí para mantener el tracking
+        // Solo cancelamos la notificación visual
+        notificationHelper.cancelNotification()
+    }
+
+    // NUEVAS FUNCIONES DE CONFIGURACIÓN
+    fun toggleAlerts(enabled: Boolean) {
+        _alertsEnabled.value = enabled
+        if (!enabled) {
+            // Si se desactivan las alertas, cancelar cualquier notificación activa
+            notificationHelper.cancelNotification()
+            _badPostureAlert.value = false
+        }
+    }
+
+    fun toggleVibration(enabled: Boolean) {
+        _vibrationEnabled.value = enabled
+    }
+
+    fun toggleSound(enabled: Boolean) {
+        _soundEnabled.value = enabled
+    }
+
+    // NUEVA FUNCIÓN: Obtener estadísticas de alertas del día
+    fun getTodayAlertCount(): Int {
+        // Esta función puede ser expandida para contar alertas desde la BD
+        return 0 // Por ahora retornamos 0, pero puedes implementar el conteo real
     }
 
     // === HELPERS ===
@@ -210,6 +312,13 @@ class DashboardViewModel(
         calendar.set(Calendar.MILLISECOND, 0)
         return calendar.timeInMillis
     }
+
+    // NUEVA FUNCIÓN: Limpiar recursos cuando el ViewModel se destruye
+    override fun onCleared() {
+        super.onCleared()
+        // Cancelar cualquier notificación pendiente
+        notificationHelper.cancelNotification()
+    }
 }
 
 // Data class para estadísticas del dashboard
@@ -224,18 +333,18 @@ data class DashboardStats(
     val totalTimeMinutes: Int
 )
 
-// Factory para el ViewModel
+// Factory para el ViewModel - ACTUALIZADO CON CONTEXT
 class DashboardViewModelFactory(
     private val postureRecordDao: PostureRecordDao,
     private val userId: Int,
-    private val esp32IP: String
+    private val esp32IP: String,
+    private val context: Context  // NUEVO: Añadir Context
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(DashboardViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return DashboardViewModel(postureRecordDao, userId, esp32IP) as T
+            return DashboardViewModel(postureRecordDao, userId, esp32IP, context) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
-
